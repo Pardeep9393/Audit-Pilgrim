@@ -274,12 +274,24 @@ async function loadData(){
     }
 
     // rows[0] = sheet's own totals row, rows[1] = header labels, rows[2..] = data
+    // NOTE: gviz infers each column's data TYPE from its dominant content. Since
+    // columns D..N are almost entirely 0/1 counts, gviz treats them as "number"
+    // columns — so the text header in row 2 ("Team-A" etc.) comes back with
+    // v:null and the actual text tucked into the formatted field `f` instead.
+    // Always fall back to `.f` when `.v` is null/empty.
+    const cellText = (cell) => {
+      if(!cell) return '';
+      if(cell.v !== null && cell.v !== undefined && cell.v !== '') return String(cell.v);
+      if(cell.f !== null && cell.f !== undefined && cell.f !== '') return String(cell.f);
+      return '';
+    };
+
     const headerRow = rows[1].c;
     teamNames = [];
     let teamStartIdx = 3; // column D
     let idx = teamStartIdx;
     while(idx < headerRow.length){
-      const label = headerRow[idx] && headerRow[idx].v ? String(headerRow[idx].v) : '';
+      const label = cellText(headerRow[idx]);
       if(!label || /^type$/i.test(label)) break;
       teamNames.push(label);
       idx++;
@@ -289,22 +301,29 @@ async function loadData(){
     const valueColIdx = teamEndIdx + 1;  // value column
     const notMatchColIdx = teamEndIdx + 2; // Not match EAN column
 
+    const cellNum = (cell) => {
+      if(!cell) return 0;
+      if(cell.v !== null && cell.v !== undefined && cell.v !== '') return Number(cell.v) || 0;
+      if(cell.f !== null && cell.f !== undefined && cell.f !== '') return Number(cell.f) || 0;
+      return 0;
+    };
+
     // Row 1 (rows[0]) already holds the sheet's own totals — pull team sums and
     // the Not Match EAN sum straight from there instead of recomputing.
     const totalsRow = rows[0].c;
-    teamTotals = teamNames.map((_, i) => Number(totalsRow[teamStartIdx + i] && totalsRow[teamStartIdx + i].v) || 0);
-    notMatchTotal = Number(totalsRow[notMatchColIdx] && totalsRow[notMatchColIdx].v) || 0;
+    teamTotals = teamNames.map((_, i) => cellNum(totalsRow[teamStartIdx + i]));
+    notMatchTotal = cellNum(totalsRow[notMatchColIdx]);
 
     rawRows = [];
     for(let r = 2; r < rows.length; r++){
       const c = rows[r].c;
       if(!c || !c[0] || c[0].v === null || c[0].v === '') continue;
-      const ean = String(c[0].v);
-      const sys = Number(c[1] && c[1].v) || 0;
-      const phy = Number(c[2] && c[2].v) || 0;
+      const ean = String(c[0] && (c[0].v ?? c[0].f) || '');
+      const sys = cellNum(c[1]);
+      const phy = cellNum(c[2]);
       const teamVals = [];
       for(let t = teamStartIdx; t < teamEndIdx; t++){
-        teamVals.push(Number(c[t] && c[t].v) || 0);
+        teamVals.push(cellNum(c[t]));
       }
       const variance = phy - sys;
       const type = variance < 0 ? 'Short' : (variance > 0 ? 'Excess' : 'Match');

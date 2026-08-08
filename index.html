@@ -155,6 +155,12 @@
       <h2>Team-wise Physical Count</h2>
       <div class="desc">Qty counted per team, summed across all EANs</div>
       <div class="chart-holder"><canvas id="teamChart"></canvas></div>
+      <div class="table-scroll" style="max-height:220px;margin-top:16px;">
+        <table id="teamPhySumTable">
+          <thead><tr><th>Team</th><th class="num">Phy Scan SUM</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
     <div class="panel">
       <h2>EAN Status Split</h2>
@@ -178,6 +184,21 @@
       <h2>Top Variance EANs</h2>
       <div class="desc">Largest Phy Count − SYS gaps (top 10 by magnitude)</div>
       <div class="chart-holder tall"><canvas id="topVarianceChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Not Match EAN Summary</h2>
+    <div class="desc">Sum of the "Not match EAN" column, plus every EAN carrying a value</div>
+    <div class="kpis" style="margin-bottom:16px;">
+      <div class="kpi short"><div class="lbl">Not Match EAN — Total Sum</div><div class="val" id="notMatchSum">0</div></div>
+      <div class="kpi"><div class="lbl">Not Match EAN — Row Count</div><div class="val" id="notMatchCount">0</div></div>
+    </div>
+    <div class="table-scroll" style="max-height:280px;">
+      <table id="notMatchTable">
+        <thead><tr><th>EAN</th><th class="num">Not Match Qty</th></tr></thead>
+        <tbody id="notMatchTableBody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -270,6 +291,9 @@ async function loadData(){
       idx++;
     }
     const teamEndIdx = idx; // exclusive
+    const typeColIdx = teamEndIdx;       // TYPE column
+    const valueColIdx = teamEndIdx + 1;  // value column
+    const notMatchColIdx = teamEndIdx + 2; // Not match EAN column
 
     rawRows = [];
     for(let r = 2; r < rows.length; r++){
@@ -285,7 +309,8 @@ async function loadData(){
       const variance = phy - sys;
       const type = variance < 0 ? 'Short' : (variance > 0 ? 'Excess' : 'Match');
       const pending = variance < 0 ? -variance : 0;
-      rawRows.push({ean, sys, phy, teamVals, variance, type, pending});
+      const notMatch = Number(c[notMatchColIdx] && c[notMatchColIdx].v) || 0;
+      rawRows.push({ean, sys, phy, teamVals, variance, type, pending, notMatch});
     }
 
     if(rawRows.length === 0){
@@ -296,8 +321,10 @@ async function loadData(){
     renderKPIs();
     renderTeamChart();
     renderTeamTable();
+    renderTeamPhySumTable();
     renderStatusChart();
     renderTopVarianceChart();
+    renderNotMatchPanel();
     applyFilters();
 
     statusEl.textContent = `Loaded ${rawRows.length} EAN rows across ${teamNames.length} teams.`;
@@ -381,6 +408,25 @@ function renderTeamTable(){
       <td class="num">100.0%</td>
     </tr>`;
   tbody.innerHTML = rowsHtml;
+}
+
+function renderTeamPhySumTable(){
+  const tbody = document.querySelector('#teamPhySumTable tbody');
+  let rowsHtml = teamNames.map((name,i) => `
+    <tr><td>${name}</td><td class="num">${fmt(teamTotals[i])}</td></tr>`).join('');
+  const totalQty = teamTotals.reduce((a,b)=>a+b,0);
+  rowsHtml += `<tr style="border-top:2px solid var(--border);font-weight:600;"><td>TOTAL</td><td class="num">${fmt(totalQty)}</td></tr>`;
+  tbody.innerHTML = rowsHtml;
+}
+
+function renderNotMatchPanel(){
+  const withValue = rawRows.filter(r => r.notMatch !== 0);
+  const totalNotMatch = rawRows.reduce((s,r)=>s+r.notMatch,0);
+  document.getElementById('notMatchSum').textContent = fmt(totalNotMatch);
+  document.getElementById('notMatchCount').textContent = fmt(withValue.length);
+  document.getElementById('notMatchTableBody').innerHTML = withValue.length
+    ? withValue.map(r => `<tr><td>${r.ean}</td><td class="num">${fmt(r.notMatch)}</td></tr>`).join('')
+    : `<tr><td colspan="2" style="color:var(--muted);text-align:center;">No "Not match EAN" values found in the sheet</td></tr>`;
 }
 
 function renderStatusChart(){

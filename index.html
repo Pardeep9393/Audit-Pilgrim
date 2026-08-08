@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audit Dashboard — RAW Final Summary</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1117;
+    --panel:#141b26;
+    --panel-2:#182031;
+    --border:#232d3f;
+    --text:#e7ecf5;
+    --muted:#8996ab;
+    --accent:#3fc8ff;
+    --accent-dim:#1c3c4d;
+    --match:#2ecc8f;
+    --short:#ff5c7a;
+    --excess:#ffb648;
+    --stamp-rot:-4deg;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1100px 500px at 90% -10%, #12233066 0%, transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    padding:28px 20px 60px;
+  }
+  .wrap{max-width:1280px;margin:0 auto;}
+
+  /* header */
+  header{
+    display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;
+    padding-bottom:20px;margin-bottom:26px;border-bottom:1px solid var(--border);
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.14em;
+    color:var(--accent);text-transform:uppercase;margin:0 0 8px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .eyebrow .bars{display:inline-flex;gap:2px;}
+  .eyebrow .bars span{width:2px;background:var(--accent);opacity:.7;}
+  h1{
+    font-family:'Archivo',sans-serif;font-weight:800;font-size:32px;margin:0;
+    letter-spacing:-0.01em;
+  }
+  .sub{color:var(--muted);font-size:13px;margin-top:6px;font-family:'IBM Plex Mono',monospace;}
+  .refresh-box{text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);}
+  .refresh-box button{
+    background:var(--accent);color:#04141c;border:none;border-radius:6px;
+    padding:9px 16px;font-family:'Inter',sans-serif;font-weight:600;font-size:13px;
+    cursor:pointer;margin-bottom:8px;transition:opacity .15s;
+  }
+  .refresh-box button:hover{opacity:.85;}
+  .refresh-box button:disabled{opacity:.5;cursor:wait;}
+
+  #status{
+    font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--muted);
+    padding:14px 16px;border:1px dashed var(--border);border-radius:8px;margin-bottom:20px;
+  }
+  #status.err{color:var(--short);border-color:var(--short);}
+
+  /* KPI row */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px;margin-bottom:28px;}
+  .kpi{
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    padding:16px 16px 14px;position:relative;overflow:hidden;
+  }
+  .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent-line,var(--accent));}
+  .kpi .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;}
+  .kpi .val{font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:600;}
+  .kpi.match{--accent-line:var(--match);} .kpi.match .val{color:var(--match);}
+  .kpi.short{--accent-line:var(--short);} .kpi.short .val{color:var(--short);}
+  .kpi.excess{--accent-line:var(--excess);} .kpi.excess .val{color:var(--excess);}
+
+  /* panels */
+  .grid2{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:16px;}
+  .grid3{display:grid;grid-template-columns:1fr;gap:16px;margin-bottom:16px;}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr;}}
+
+  .panel{
+    background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px;
+  }
+  .panel h2{
+    font-family:'Archivo',sans-serif;font-size:15px;margin:0 0 4px;font-weight:700;
+  }
+  .panel .desc{color:var(--muted);font-size:12px;margin-bottom:16px;font-family:'IBM Plex Mono',monospace;}
+  .chart-holder{position:relative;height:280px;}
+  .chart-holder.tall{height:340px;}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{
+    text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+    padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600;position:sticky;top:0;background:var(--panel);
+  }
+  tbody td{padding:8px 10px;border-bottom:1px solid #1c2536;font-family:'IBM Plex Mono',monospace;}
+  tbody tr:hover{background:var(--panel-2);}
+  .num{text-align:right;}
+  .stamp{
+    display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;
+    padding:2px 8px;border-radius:4px;letter-spacing:.05em;text-transform:uppercase;
+    transform:rotate(var(--stamp-rot));border:1px solid;
+  }
+  .stamp.Match{color:var(--match);border-color:var(--match);background:#2ecc8f18;}
+  .stamp.Short{color:var(--short);border-color:var(--short);background:#ff5c7a18;}
+  .stamp.Excess{color:var(--excess);border-color:var(--excess);background:#ffb64818;}
+
+  th.sortable{cursor:pointer;user-select:none;}
+  th.sortable:hover{color:var(--accent);}
+  th .arrow{opacity:.5;margin-left:3px;}
+
+  .table-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+  .table-controls input, .table-controls select{
+    background:#0d1420;border:1px solid var(--border);color:var(--text);
+    padding:8px 10px;border-radius:6px;font-family:'Inter',sans-serif;font-size:13px;
+  }
+  .table-controls input{flex:1;min-width:180px;}
+  .table-scroll{max-height:480px;overflow:auto;border:1px solid var(--border);border-radius:8px;}
+  .pager{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+  .pager button{
+    background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+    padding:6px 12px;border-radius:6px;cursor:pointer;font-family:'Inter',sans-serif;font-size:12px;
+  }
+  .pager button:disabled{opacity:.4;cursor:not-allowed;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <p class="eyebrow"><span class="bars"><span style="height:8px"></span><span style="height:13px"></span><span style="height:6px"></span><span style="height:15px"></span><span style="height:9px"></span></span> Warehouse Audit · RAW Final Summary</p>
+      <h1>Audit Dashboard</h1>
+      <div class="sub" id="sheetTitle">Audit Pilgrim — FRK Aug-BLS</div>
+    </div>
+    <div class="refresh-box">
+      <button id="refreshBtn" onclick="loadData()">↻ Refresh now</button>
+      <div>Last updated: <span id="lastUpdated">—</span></div>
+      <div>Auto-refresh in <span id="countdown">300</span>s</div>
+    </div>
+  </header>
+
+  <div id="status">Loading data from Google Sheet…</div>
+
+  <div class="kpis" id="kpiRow"></div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>Team-wise Physical Count</h2>
+      <div class="desc">Qty counted per team, summed across all EANs</div>
+      <div class="chart-holder"><canvas id="teamChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>EAN Status Split</h2>
+      <div class="desc">Short vs Excess vs Match, by EAN count</div>
+      <div class="chart-holder"><canvas id="statusChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>Team-wise Summary Table</h2>
+      <div class="desc">Physical count qty + EANs touched per team</div>
+      <div class="table-scroll" style="max-height:320px;">
+        <table id="teamTable">
+          <thead><tr><th>Team</th><th class="num">Qty Counted</th><th class="num">EANs Touched</th><th class="num">Share %</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Top Variance EANs</h2>
+      <div class="desc">Largest Phy Count − SYS gaps (top 10 by magnitude)</div>
+      <div class="chart-holder tall"><canvas id="topVarianceChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>EAN-wise Detail — Short / Excess / Match / Pending</h2>
+    <div class="desc">Phy Count − SYS per EAN, with pending scan qty (SYS not yet matched by physical count)</div>
+    <div class="table-controls">
+      <input type="text" id="searchBox" placeholder="Search EAN…" oninput="applyFilters()">
+      <select id="typeFilter" onchange="applyFilters()">
+        <option value="All">All statuses</option>
+        <option value="Short">Short</option>
+        <option value="Excess">Excess</option>
+        <option value="Match">Match</option>
+      </select>
+      <span id="rowCount" style="color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:12px;"></span>
+    </div>
+    <div class="table-scroll">
+      <table id="eanTable">
+        <thead>
+          <tr>
+            <th class="sortable" onclick="sortBy('ean')">EAN <span class="arrow">↕</span></th>
+            <th class="sortable num" onclick="sortBy('sys')">SYS <span class="arrow">↕</span></th>
+            <th class="sortable num" onclick="sortBy('phy')">Phy Count <span class="arrow">↕</span></th>
+            <th class="sortable num" onclick="sortBy('variance')">Variance <span class="arrow">↕</span></th>
+            <th class="sortable" onclick="sortBy('type')">Status <span class="arrow">↕</span></th>
+            <th class="sortable num" onclick="sortBy('pending')">Pending Scan Qty <span class="arrow">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="eanTableBody"></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <span id="pageInfo"></span>
+      <div>
+        <button onclick="changePage(-1)" id="prevBtn">‹ Prev</button>
+        <button onclick="changePage(1)" id="nextBtn">Next ›</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const SHEET_ID = "1-spNRkteQBIKliDlpq0qkIdLxbFzxsTL1MPq4U1dEk8";
+const SHEET_NAME = "RAW Final Summary";
+const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`;
+
+let rawRows = [];
+let teamNames = [];
+let teamTotals = [];
+let teamEanCounts = [];
+let filteredRows = [];
+let sortState = {col:'variance', dir:'asc'};
+let currentPage = 1;
+const PAGE_SIZE = 50;
+
+let teamChart, statusChart, topVarianceChart;
+let countdownTimer, countdownVal = 300;
+
+function fmt(n){ return Number(n).toLocaleString('en-IN'); }
+
+async function loadData(){
+  const btn = document.getElementById('refreshBtn');
+  const statusEl = document.getElementById('status');
+  btn.disabled = true;
+  statusEl.className = '';
+  statusEl.textContent = 'Fetching latest data from Google Sheet…';
+
+  try{
+    const res = await fetch(GVIZ_URL);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+    const data = JSON.parse(jsonStr);
+    const rows = data.table.rows;
+
+    if(!rows || rows.length < 3){
+      throw new Error('Sheet returned no data rows — check that the tab is not filtered (use Filter Views, not standard filters) and is shared as "Anyone with the link can view".');
+    }
+
+    // rows[0] = sheet's own totals row, rows[1] = header labels, rows[2..] = data
+    const headerRow = rows[1].c;
+    teamNames = [];
+    let teamStartIdx = 3; // column D
+    let idx = teamStartIdx;
+    while(idx < headerRow.length){
+      const label = headerRow[idx] && headerRow[idx].v ? String(headerRow[idx].v) : '';
+      if(!label || /^type$/i.test(label)) break;
+      teamNames.push(label);
+      idx++;
+    }
+    const teamEndIdx = idx; // exclusive
+
+    rawRows = [];
+    for(let r = 2; r < rows.length; r++){
+      const c = rows[r].c;
+      if(!c || !c[0] || c[0].v === null || c[0].v === '') continue;
+      const ean = String(c[0].v);
+      const sys = Number(c[1] && c[1].v) || 0;
+      const phy = Number(c[2] && c[2].v) || 0;
+      const teamVals = [];
+      for(let t = teamStartIdx; t < teamEndIdx; t++){
+        teamVals.push(Number(c[t] && c[t].v) || 0);
+      }
+      const variance = phy - sys;
+      const type = variance < 0 ? 'Short' : (variance > 0 ? 'Excess' : 'Match');
+      const pending = variance < 0 ? -variance : 0;
+      rawRows.push({ean, sys, phy, teamVals, variance, type, pending});
+    }
+
+    if(rawRows.length === 0){
+      throw new Error('No EAN rows parsed — sheet layout may have changed.');
+    }
+
+    computeAggregates();
+    renderKPIs();
+    renderTeamChart();
+    renderTeamTable();
+    renderStatusChart();
+    renderTopVarianceChart();
+    applyFilters();
+
+    statusEl.textContent = `Loaded ${rawRows.length} EAN rows across ${teamNames.length} teams.`;
+    document.getElementById('lastUpdated').textContent = new Date().toLocaleString('en-IN');
+    resetCountdown();
+  }catch(err){
+    statusEl.className = 'err';
+    statusEl.textContent = 'Error loading sheet: ' + err.message;
+    console.error(err);
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function computeAggregates(){
+  teamTotals = teamNames.map((_, i) => rawRows.reduce((s, r) => s + r.teamVals[i], 0));
+  teamEanCounts = teamNames.map((_, i) => rawRows.reduce((s, r) => s + (r.teamVals[i] > 0 ? 1 : 0), 0));
+}
+
+function renderKPIs(){
+  const totalSys = rawRows.reduce((s,r)=>s+r.sys,0);
+  const totalPhy = rawRows.reduce((s,r)=>s+r.phy,0);
+  const netVariance = totalPhy - totalSys;
+  const totalPending = rawRows.reduce((s,r)=>s+r.pending,0);
+  const totalExcessQty = rawRows.reduce((s,r)=>s + (r.variance>0 ? r.variance : 0),0);
+  const cMatch = rawRows.filter(r=>r.type==='Match').length;
+  const cShort = rawRows.filter(r=>r.type==='Short').length;
+  const cExcess = rawRows.filter(r=>r.type==='Excess').length;
+
+  const kpis = [
+    {lbl:'Total EANs', val:fmt(rawRows.length), cls:''},
+    {lbl:'Total SYS Qty', val:fmt(totalSys), cls:''},
+    {lbl:'Total Phy Count', val:fmt(totalPhy), cls:''},
+    {lbl:'Net Variance', val:(netVariance>=0?'+':'')+fmt(netVariance), cls: netVariance<0?'short':(netVariance>0?'excess':'match')},
+    {lbl:'Match EANs', val:fmt(cMatch), cls:'match'},
+    {lbl:'Short EANs', val:fmt(cShort), cls:'short'},
+    {lbl:'Excess EANs', val:fmt(cExcess), cls:'excess'},
+    {lbl:'Pending Scan Qty', val:fmt(totalPending), cls:'short'},
+    {lbl:'Excess Qty', val:fmt(totalExcessQty), cls:'excess'},
+  ];
+  document.getElementById('kpiRow').innerHTML = kpis.map(k =>
+    `<div class="kpi ${k.cls}"><div class="lbl">${k.lbl}</div><div class="val">${k.val}</div></div>`
+  ).join('');
+}
+
+function renderTeamChart(){
+  const ctx = document.getElementById('teamChart');
+  if(teamChart) teamChart.destroy();
+  teamChart = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: teamNames,
+      datasets:[{ label:'Qty Counted', data: teamTotals, backgroundColor:'#3fc8ff', borderRadius:4 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{color:'#8996ab'}, grid:{color:'#1c2536'}},
+        y:{ticks:{color:'#8996ab'}, grid:{color:'#1c2536'}, beginAtZero:true}
+      }
+    }
+  });
+}
+
+function renderTeamTable(){
+  const totalQty = teamTotals.reduce((a,b)=>a+b,0);
+  const tbody = document.querySelector('#teamTable tbody');
+  let rowsHtml = teamNames.map((name,i) => `
+    <tr>
+      <td>${name}</td>
+      <td class="num">${fmt(teamTotals[i])}</td>
+      <td class="num">${fmt(teamEanCounts[i])}</td>
+      <td class="num">${totalQty ? ((teamTotals[i]/totalQty*100).toFixed(1)) : '0.0'}%</td>
+    </tr>`).join('');
+  rowsHtml += `
+    <tr style="border-top:2px solid var(--border);font-weight:600;">
+      <td>TOTAL</td>
+      <td class="num">${fmt(totalQty)}</td>
+      <td class="num">${fmt(rawRows.length)}</td>
+      <td class="num">100.0%</td>
+    </tr>`;
+  tbody.innerHTML = rowsHtml;
+}
+
+function renderStatusChart(){
+  const cMatch = rawRows.filter(r=>r.type==='Match').length;
+  const cShort = rawRows.filter(r=>r.type==='Short').length;
+  const cExcess = rawRows.filter(r=>r.type==='Excess').length;
+  const ctx = document.getElementById('statusChart');
+  if(statusChart) statusChart.destroy();
+  statusChart = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:['Short','Excess','Match'],
+      datasets:[{ data:[cShort,cExcess,cMatch], backgroundColor:['#ff5c7a','#ffb648','#2ecc8f'], borderColor:'#141b26', borderWidth:3 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom', labels:{color:'#e7ecf5'}}}
+    }
+  });
+}
+
+function renderTopVarianceChart(){
+  const top = [...rawRows].sort((a,b)=>Math.abs(b.variance)-Math.abs(a.variance)).slice(0,10);
+  const ctx = document.getElementById('topVarianceChart');
+  if(topVarianceChart) topVarianceChart.destroy();
+  topVarianceChart = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: top.map(r=>r.ean),
+      datasets:[{
+        label:'Variance',
+        data: top.map(r=>r.variance),
+        backgroundColor: top.map(r=> r.variance<0 ? '#ff5c7a' : '#ffb648'),
+        borderRadius:4
+      }]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{color:'#8996ab'}, grid:{color:'#1c2536'}},
+        y:{ticks:{color:'#8996ab', font:{family:'IBM Plex Mono', size:10}}, grid:{display:false}}
+      }
+    }
+  });
+}
+
+function applyFilters(){
+  const q = document.getElementById('searchBox').value.trim().toLowerCase();
+  const type = document.getElementById('typeFilter').value;
+  filteredRows = rawRows.filter(r =>
+    (type==='All' || r.type===type) && (!q || r.ean.toLowerCase().includes(q))
+  );
+  sortRows();
+  currentPage = 1;
+  renderTable();
+}
+
+function sortBy(col){
+  if(sortState.col === col){ sortState.dir = sortState.dir==='asc' ? 'desc' : 'asc'; }
+  else{ sortState.col = col; sortState.dir = 'asc'; }
+  sortRows();
+  renderTable();
+}
+
+function sortRows(){
+  const {col, dir} = sortState;
+  const mul = dir==='asc' ? 1 : -1;
+  filteredRows.sort((a,b) => {
+    let va = a[col], vb = b[col];
+    if(typeof va === 'string') return va.localeCompare(vb) * mul;
+    return (va - vb) * mul;
+  });
+}
+
+function renderTable(){
+  const start = (currentPage-1) * PAGE_SIZE;
+  const pageRows = filteredRows.slice(start, start + PAGE_SIZE);
+  document.getElementById('eanTableBody').innerHTML = pageRows.map(r => `
+    <tr>
+      <td>${r.ean}</td>
+      <td class="num">${fmt(r.sys)}</td>
+      <td class="num">${fmt(r.phy)}</td>
+      <td class="num" style="color:${r.variance<0?'var(--short)':(r.variance>0?'var(--excess)':'var(--match)')}">${r.variance>=0?'+':''}${fmt(r.variance)}</td>
+      <td><span class="stamp ${r.type}">${r.type}</span></td>
+      <td class="num">${r.pending ? fmt(r.pending) : '—'}</td>
+    </tr>`).join('');
+
+  document.getElementById('rowCount').textContent = `${filteredRows.length} of ${rawRows.length} EANs`;
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+  document.getElementById('prevBtn').disabled = currentPage <= 1;
+  document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+}
+
+function changePage(delta){
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  currentPage = Math.min(totalPages, Math.max(1, currentPage + delta));
+  renderTable();
+}
+
+function resetCountdown(){
+  countdownVal = 300;
+  clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    countdownVal--;
+    document.getElementById('countdown').textContent = countdownVal;
+    if(countdownVal <= 0) loadData();
+  }, 1000);
+}
+
+loadData();
+</script>
+</body>
+</html>

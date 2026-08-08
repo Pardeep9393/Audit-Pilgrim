@@ -111,6 +111,20 @@
   .stamp.Short{color:var(--short);border-color:var(--short);background:#ff5c7a18;}
   .stamp.Excess{color:var(--excess);border-color:var(--excess);background:#ffb64818;}
 
+  .simple-grid-scroll{overflow-x:auto;border:1px solid var(--border);border-radius:8px;}
+  table.simple-grid{border-collapse:collapse;width:100%;}
+  table.simple-grid td{
+    font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:right;
+    padding:10px 14px;border:1px solid var(--border);white-space:nowrap;min-width:70px;
+  }
+  table.simple-grid tr.grid-vals td{color:var(--text);font-weight:600;}
+  table.simple-grid tr.grid-vals td.lowest{color:var(--short);}
+  table.simple-grid tr.grid-labels td{
+    font-family:'Inter',sans-serif;font-weight:700;font-size:12px;
+    color:var(--muted);text-align:left;background:var(--panel-2);
+  }
+  table.simple-grid tr.grid-labels td.lowest{color:var(--short);}
+
   th.sortable{cursor:pointer;user-select:none;}
   th.sortable:hover{color:var(--accent);}
   th .arrow{opacity:.5;margin-left:3px;}
@@ -154,7 +168,9 @@
     <div class="panel">
       <h2>Team-wise Physical Count</h2>
       <div class="desc">Qty counted per team, summed across all EANs</div>
-      <div class="chart-holder"><canvas id="teamChart"></canvas></div>
+      <div class="simple-grid-scroll">
+        <table class="simple-grid" id="teamSimpleGrid"></table>
+      </div>
       <div class="table-scroll" style="max-height:220px;margin-top:16px;">
         <table id="teamPhySumTable">
           <thead><tr><th>Team</th><th class="num">Phy Scan SUM</th></tr></thead>
@@ -249,7 +265,7 @@ let sortState = {col:'variance', dir:'asc'};
 let currentPage = 1;
 const PAGE_SIZE = 50;
 
-let teamChart, statusChart, topVarianceChart;
+let statusChart, topVarianceChart;
 let countdownTimer, countdownVal = 300;
 
 function fmt(n){ return Number(n).toLocaleString('en-IN'); }
@@ -368,7 +384,7 @@ async function loadData(){
 
     computeAggregates();
     renderKPIs();
-    renderTeamChart();
+    renderTeamSimpleGrid();
     renderTeamTable();
     renderTeamPhySumTable();
     renderStatusChart();
@@ -418,36 +434,29 @@ function renderKPIs(){
   ).join('');
 }
 
-function renderTeamChart(){
-  const ctx = document.getElementById('teamChart');
-  if(teamChart) teamChart.destroy();
-  teamChart = new Chart(ctx, {
-    type:'bar',
-    data:{
-      labels: teamNames,
-      datasets:[{ label:'Qty Counted', data: teamTotals, backgroundColor:'#3fc8ff', borderRadius:4 }]
-    },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}},
-      scales:{
-        x:{ticks:{color:'#8996ab'}, grid:{color:'#1c2536'}},
-        y:{ticks:{color:'#8996ab'}, grid:{color:'#1c2536'}, beginAtZero:true}
-      }
-    }
-  });
+function renderTeamSimpleGrid(){
+  const el = document.getElementById('teamSimpleGrid');
+  const minQty = teamTotals.length ? Math.min(...teamTotals) : 0;
+  const valsRow = teamTotals.map(v => `<td class="${v===minQty?'lowest':''}">${fmt(v)}</td>`).join('');
+  const labelsRow = teamNames.map((name,i) => `<td class="${teamTotals[i]===minQty?'lowest':''}">${name}</td>`).join('');
+  el.innerHTML = `<tr class="grid-vals">${valsRow}</tr><tr class="grid-labels">${labelsRow}</tr>`;
 }
 
 function renderTeamTable(){
   const totalQty = teamTotals.reduce((a,b)=>a+b,0);
+  const minQty = teamTotals.length ? Math.min(...teamTotals) : 0;
+  const order = teamNames.map((_,i)=>i).sort((a,b)=> teamTotals[b]-teamTotals[a]);
   const tbody = document.querySelector('#teamTable tbody');
-  let rowsHtml = teamNames.map((name,i) => `
-    <tr>
-      <td>${name}</td>
+  let rowsHtml = order.map(i => {
+    const isLowest = teamTotals[i] === minQty;
+    return `
+    <tr${isLowest ? ' style="background:#ff5c7a14;"' : ''}>
+      <td>${teamNames[i]}${isLowest ? ' <span class="stamp Short" style="margin-left:6px;">Lowest</span>' : ''}</td>
       <td class="num">${fmt(teamTotals[i])}</td>
       <td class="num">${fmt(teamEanCounts[i])}</td>
       <td class="num">${totalQty ? ((teamTotals[i]/totalQty*100).toFixed(1)) : '0.0'}%</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   rowsHtml += `
     <tr style="border-top:2px solid var(--border);font-weight:600;">
       <td>TOTAL</td>
@@ -460,8 +469,9 @@ function renderTeamTable(){
 
 function renderTeamPhySumTable(){
   const tbody = document.querySelector('#teamPhySumTable tbody');
-  let rowsHtml = teamNames.map((name,i) => `
-    <tr><td>${name}</td><td class="num">${fmt(teamTotals[i])}</td></tr>`).join('');
+  const order = teamNames.map((_,i)=>i).sort((a,b)=> teamTotals[b]-teamTotals[a]);
+  let rowsHtml = order.map(i => `
+    <tr><td>${teamNames[i]}</td><td class="num">${fmt(teamTotals[i])}</td></tr>`).join('');
   const totalQty = teamTotals.reduce((a,b)=>a+b,0);
   rowsHtml += `<tr style="border-top:2px solid var(--border);font-weight:600;"><td>TOTAL</td><td class="num">${fmt(totalQty)}</td></tr>`;
   tbody.innerHTML = rowsHtml;

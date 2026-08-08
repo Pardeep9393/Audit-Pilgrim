@@ -288,9 +288,6 @@ async function loadData(){
 
     const headerRow = rows[1].c;
 
-    // Find TYPE / value / Not match EAN columns by NAME instead of by
-    // position, so a miscount of team columns can't silently misalign
-    // which cell we read the "Not match EAN" total from.
     const findColByName = (names) => {
       for(let i = 0; i < headerRow.length; i++){
         const label = cellText(headerRow[i]).trim().toLowerCase();
@@ -298,13 +295,26 @@ async function loadData(){
       }
       return -1;
     };
-    const typeColIdx = findColByName(['type']);
-    const valueColIdx = findColByName(['value']);
-    const notMatchColIdx = findColByName(['not match ean', 'not match ean ']);
 
-    if(typeColIdx === -1 || notMatchColIdx === -1){
-      throw new Error('Could not locate "TYPE" or "Not match EAN" header — check row 2 spelling/spacing in the sheet.');
+    let typeColIdx = findColByName(['type']);
+    let valueColIdx = findColByName(['value']);
+    let notMatchColIdx = findColByName(['not match ean']);
+
+    // Fallback: original position-based detection (walk team columns until
+    // a blank header or literal "type" match is hit). Used whenever the
+    // name-lookup above can't find a column, e.g. because gviz nulled out
+    // that header cell's text (happens when it infers the column as numeric).
+    if(typeColIdx === -1){
+      let idx = 3; // column D
+      while(idx < headerRow.length){
+        const label = cellText(headerRow[idx]);
+        if(!label || /^type$/i.test(label)) break;
+        idx++;
+      }
+      typeColIdx = idx;
     }
+    if(valueColIdx === -1) valueColIdx = typeColIdx + 1;
+    if(notMatchColIdx === -1) notMatchColIdx = typeColIdx + 2;
 
     teamNames = [];
     let teamStartIdx = 3; // column D
@@ -313,11 +323,12 @@ async function loadData(){
       if(label) teamNames.push(label);
     }
 
-    console.log('[audit-dashboard] column indices ->', {
-      typeColIdx, colLetter: (i)=>String.fromCharCode(65+i),
-      TYPE: String.fromCharCode(65+typeColIdx),
-      value: valueColIdx>=0 ? String.fromCharCode(65+valueColIdx) : '(not found)',
-      notMatchEAN: String.fromCharCode(65+notMatchColIdx),
+    // Diagnostic: dump every header-row cell (raw v/f) so any misalignment
+    // is visible at a glance in the browser console.
+    const colLetter = (i) => { let s=''; i++; while(i>0){ s=String.fromCharCode(65+((i-1)%26))+s; i=Math.floor((i-1)/26);} return s; };
+    console.log('[audit-dashboard] full header row (row 2):', headerRow.map((c,i)=>`${colLetter(i)}: v=${JSON.stringify(c?.v)} f=${JSON.stringify(c?.f)}`));
+    console.log('[audit-dashboard] detected columns ->', {
+      typeCol: colLetter(typeColIdx), valueCol: colLetter(valueColIdx), notMatchCol: colLetter(notMatchColIdx),
       teamCount: teamNames.length, teamNames
     });
 

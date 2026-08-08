@@ -172,25 +172,10 @@
 
   <div class="kpis" id="kpiRow"></div>
 
-  <div class="grid2">
-    <div class="panel">
-      <div class="panel-head"><h2>Team-wise Physical Count</h2><button class="dl-btn" onclick="downloadTeamPhysicalCount()">⬇ CSV</button></div>
-      <div class="desc">Qty counted per team, summed across all EANs</div>
-      <div class="simple-grid-scroll">
-        <table class="simple-grid" id="teamSimpleGrid"></table>
-      </div>
-      <div class="table-scroll" style="max-height:220px;margin-top:16px;">
-        <table id="teamPhySumTable">
-          <thead><tr><th>Team</th><th class="num">Phy Scan SUM</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="panel">
-      <h2>EAN Status Split</h2>
-      <div class="desc">Short vs Excess vs Match, by EAN count</div>
-      <div class="chart-holder"><canvas id="statusChart"></canvas></div>
-    </div>
+  <div class="panel">
+    <h2>EAN Status Split</h2>
+    <div class="desc">Short vs Excess vs Match, by EAN count</div>
+    <div class="chart-holder"><canvas id="statusChart"></canvas></div>
   </div>
 
   <div class="grid2">
@@ -499,9 +484,7 @@ async function loadData(){
 
     computeAggregates();
     renderKPIs();
-    renderTeamSimpleGrid();
     renderTeamTable();
-    renderTeamPhySumTable();
     renderStatusChart();
     renderTopVarianceChart();
     renderNotMatchPanel();
@@ -557,11 +540,6 @@ function downloadTeamSummary(){
   rows.push(['TOTAL', totalQty, rawRows.length, '100.0%']);
   downloadCsv('team-wise-summary.csv', ['Team','Qty Counted','EANs Touched','Share %'], rows);
 }
-function downloadTeamPhysicalCount(){
-  const order = teamNames.map((_,i)=>i).sort((a,b)=> teamTotals[b]-teamTotals[a]);
-  const rows = order.map(i => [teamNames[i], teamTotals[i]]);
-  downloadCsv('team-wise-physical-count.csv', ['Team','Qty Counted'], rows);
-}
 function downloadBinSummary(){
   const rows = binSummary.map(b => [b.location, b.sys, b.phy, b.diff]);
   downloadCsv('bin-wise-summary.csv', ['Location','SYS','Physical','Diff'], rows);
@@ -581,14 +559,6 @@ function renderBinSummary(){
       <td class="num" style="${b.diff < 0 ? 'color:var(--short);' : ''}">${fmt(b.diff)}</td>
     </tr>`).join('');
 }
-function renderTeamSimpleGrid(){
-  const el = document.getElementById('teamSimpleGrid');
-  const minQty = teamTotals.length ? Math.min(...teamTotals) : 0;
-  const valsRow = teamTotals.map(v => `<td class="${v===minQty?'lowest':''}">${fmt(v)}</td>`).join('');
-  const labelsRow = teamNames.map((name,i) => `<td class="${teamTotals[i]===minQty?'lowest':''}">${name}</td>`).join('');
-  el.innerHTML = `<tr class="grid-vals">${valsRow}</tr><tr class="grid-labels">${labelsRow}</tr>`;
-}
-
 function renderTeamTable(){
   const totalQty = teamTotals.reduce((a,b)=>a+b,0);
   const minQty = teamTotals.length ? Math.min(...teamTotals) : 0;
@@ -611,16 +581,6 @@ function renderTeamTable(){
       <td class="num">${fmt(rawRows.length)}</td>
       <td class="num">100.0%</td>
     </tr>`;
-  tbody.innerHTML = rowsHtml;
-}
-
-function renderTeamPhySumTable(){
-  const tbody = document.querySelector('#teamPhySumTable tbody');
-  const order = teamNames.map((_,i)=>i).sort((a,b)=> teamTotals[b]-teamTotals[a]);
-  let rowsHtml = order.map(i => `
-    <tr><td>${teamNames[i]}</td><td class="num">${fmt(teamTotals[i])}</td></tr>`).join('');
-  const totalQty = teamTotals.reduce((a,b)=>a+b,0);
-  rowsHtml += `<tr style="border-top:2px solid var(--border);font-weight:600;"><td>TOTAL</td><td class="num">${fmt(totalQty)}</td></tr>`;
   tbody.innerHTML = rowsHtml;
 }
 

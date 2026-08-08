@@ -287,19 +287,39 @@ async function loadData(){
     };
 
     const headerRow = rows[1].c;
+
+    // Find TYPE / value / Not match EAN columns by NAME instead of by
+    // position, so a miscount of team columns can't silently misalign
+    // which cell we read the "Not match EAN" total from.
+    const findColByName = (names) => {
+      for(let i = 0; i < headerRow.length; i++){
+        const label = cellText(headerRow[i]).trim().toLowerCase();
+        if(names.includes(label)) return i;
+      }
+      return -1;
+    };
+    const typeColIdx = findColByName(['type']);
+    const valueColIdx = findColByName(['value']);
+    const notMatchColIdx = findColByName(['not match ean', 'not match ean ']);
+
+    if(typeColIdx === -1 || notMatchColIdx === -1){
+      throw new Error('Could not locate "TYPE" or "Not match EAN" header — check row 2 spelling/spacing in the sheet.');
+    }
+
     teamNames = [];
     let teamStartIdx = 3; // column D
-    let idx = teamStartIdx;
-    while(idx < headerRow.length){
+    for(let idx = teamStartIdx; idx < typeColIdx; idx++){
       const label = cellText(headerRow[idx]);
-      if(!label || /^type$/i.test(label)) break;
-      teamNames.push(label);
-      idx++;
+      if(label) teamNames.push(label);
     }
-    const teamEndIdx = idx; // exclusive
-    const typeColIdx = teamEndIdx;       // TYPE column
-    const valueColIdx = teamEndIdx + 1;  // value column
-    const notMatchColIdx = teamEndIdx + 2; // Not match EAN column
+
+    console.log('[audit-dashboard] column indices ->', {
+      typeColIdx, colLetter: (i)=>String.fromCharCode(65+i),
+      TYPE: String.fromCharCode(65+typeColIdx),
+      value: valueColIdx>=0 ? String.fromCharCode(65+valueColIdx) : '(not found)',
+      notMatchEAN: String.fromCharCode(65+notMatchColIdx),
+      teamCount: teamNames.length, teamNames
+    });
 
     const cellNum = (cell) => {
       if(!cell) return 0;
@@ -322,7 +342,7 @@ async function loadData(){
       const sys = cellNum(c[1]);
       const phy = cellNum(c[2]);
       const teamVals = [];
-      for(let t = teamStartIdx; t < teamEndIdx; t++){
+      for(let t = teamStartIdx; t < typeColIdx; t++){
         teamVals.push(cellNum(c[t]));
       }
       const variance = phy - sys;

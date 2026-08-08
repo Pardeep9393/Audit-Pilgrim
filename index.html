@@ -66,6 +66,14 @@
   }
   #status.err{color:var(--short);border-color:var(--short);}
 
+  .panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .dl-btn{
+    background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:6px;
+    padding:5px 10px;font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:11px;
+    cursor:pointer;transition:background .15s,color .15s;white-space:nowrap;flex-shrink:0;
+  }
+  .dl-btn:hover{background:var(--accent);color:#04141c;}
+
   /* KPI row */
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px;margin-bottom:28px;}
   .kpi{
@@ -166,7 +174,7 @@
 
   <div class="grid2">
     <div class="panel">
-      <h2>Team-wise Physical Count</h2>
+      <div class="panel-head"><h2>Team-wise Physical Count</h2><button class="dl-btn" onclick="downloadTeamPhysicalCount()">⬇ CSV</button></div>
       <div class="desc">Qty counted per team, summed across all EANs</div>
       <div class="simple-grid-scroll">
         <table class="simple-grid" id="teamSimpleGrid"></table>
@@ -187,7 +195,7 @@
 
   <div class="grid2">
     <div class="panel">
-      <h2>Team-wise Summary Table</h2>
+      <div class="panel-head"><h2>Team-wise Summary Table</h2><button class="dl-btn" onclick="downloadTeamSummary()">⬇ CSV</button></div>
       <div class="desc">Physical count qty + EANs touched per team</div>
       <div class="table-scroll" style="max-height:320px;">
         <table id="teamTable">
@@ -212,7 +220,7 @@
   </div>
 
   <div class="panel">
-    <h2>BIN-wise Summary</h2>
+    <div class="panel-head"><h2>BIN-wise Summary</h2><button class="dl-btn" onclick="downloadBinSummary()">⬇ CSV</button></div>
     <div class="desc">SYS vs Physical vs Diff, by bin/location</div>
     <div class="table-wrap">
       <table id="binSummaryTable">
@@ -230,7 +238,7 @@
   </div>
 
   <div class="panel">
-    <h2>EAN-wise Detail — Short / Excess / Match / Pending</h2>
+    <div class="panel-head"><h2>EAN-wise Detail — Short / Excess / Match / Pending</h2><button class="dl-btn" onclick="downloadEanDetail()">⬇ CSV</button></div>
     <div class="desc">Phy Count − SYS per EAN, with pending scan qty (SYS not yet matched by physical count)</div>
     <div class="table-controls">
       <input type="text" id="searchBox" placeholder="Search EAN…" oninput="applyFilters()">
@@ -275,6 +283,25 @@ const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx
 const BIN_SHEET_GID = "975988618"; // "BIN RAW Final Summary" tab
 const BIN_GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${BIN_SHEET_GID}`;
 
+function colLetter(i){ let s=''; i++; while(i>0){ s=String.fromCharCode(65+((i-1)%26))+s; i=Math.floor((i-1)/26);} return s; }
+
+// Fetches a single-row range (e.g. "D2:O2") on its own. Scoping the query to
+// just that row means every cell is text, so gviz infers a "string" column
+// type and returns the real header text — unlike the full-sheet query, where
+// these same columns are dominated by 0/1 counts and gviz nulls the header
+// cell's text because it infers a "number" column instead.
+async function fetchHeaderRange(gid, range){
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${gid}&range=${range}`;
+  const res = await fetch(url);
+  if(!res.ok) return null;
+  const text = await res.text();
+  const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+  const data = JSON.parse(jsonStr);
+  const row = data.table.rows && data.table.rows[0];
+  if(!row) return null;
+  return row.c.map(c => (c && (c.v ?? c.f)) ? String(c.v ?? c.f) : '');
+}
+
 let rawRows = [];
 let teamNames = [];
 let teamTotals = [];
@@ -290,6 +317,21 @@ let statusChart, topVarianceChart;
 let countdownTimer, countdownVal = 300;
 
 function fmt(n){ return Number(n).toLocaleString('en-IN'); }
+
+// Generic CSV download: headers = array of column names, rowsData = array of arrays.
+function downloadCsv(filename, headers, rowsData){
+  const esc = (v) => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [headers.map(esc).join(',')].concat(rowsData.map(r => r.map(esc).join(',')));
+  const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 async function loadData(){
   const btn = document.getElementById('refreshBtn');
@@ -322,10 +364,10 @@ async function loadData(){
 
     // rows[0] = sheet's own totals row, rows[1] = header labels, rows[2..] = data
     // NOTE: gviz infers each column's data TYPE from its dominant content. Since
-    // columns D..N are almost entirely 0/1 counts, gviz treats them as "number"
+    // columns D..O are almost entirely 0/1 counts, gviz treats them as "number"
     // columns — so the text header in row 2 ("Team-A" etc.) comes back with
-    // v:null and the actual text tucked into the formatted field `f` instead.
-    // Always fall back to `.f` when `.v` is null/empty.
+    // v:null and f:null too. We recover the real names separately below via a
+    // range-scoped query. Always fall back to `.f` when `.v` is null/empty.
     const cellText = (cell) => {
       if(!cell) return '';
       if(cell.v !== null && cell.v !== undefined && cell.v !== '') return String(cell.v);
@@ -363,18 +405,34 @@ async function loadData(){
     if(valueColIdx === -1) valueColIdx = typeColIdx + 1;
     if(notMatchColIdx === -1) notMatchColIdx = typeColIdx + 2;
 
-    teamNames = [];
     let teamStartIdx = 3; // column D
+
+    // Real team names (e.g. "Harsh & Deepak_11174") live in row 2 of columns
+    // teamStartIdx..typeColIdx-1 (currently D2:O2). Fetch that exact range on
+    // its own so gviz sees only text and doesn't null it out.
+    let teamHeaderRange = null;
+    if(typeColIdx > teamStartIdx){
+      const rangeStr = `${colLetter(teamStartIdx)}2:${colLetter(typeColIdx-1)}2`;
+      try{
+        teamHeaderRange = await fetchHeaderRange(SHEET_GID, rangeStr);
+      }catch(e){
+        console.warn('[audit-dashboard] team header range fetch failed:', e);
+      }
+    }
+
+    teamNames = [];
     for(let idx = teamStartIdx; idx < typeColIdx; idx++){
-      let label = cellText(headerRow[idx]);
-      if(!label) label = 'Team-' + String.fromCharCode(65 + (idx - teamStartIdx)); // gviz sometimes returns no text at all (v and f both empty) for these numeric-dominant columns
+      const rangeIdx = idx - teamStartIdx;
+      let label = (teamHeaderRange && teamHeaderRange[rangeIdx] && teamHeaderRange[rangeIdx].trim()) ? teamHeaderRange[rangeIdx].trim() : '';
+      if(!label) label = cellText(headerRow[idx]);
+      if(!label) label = 'Team-' + String.fromCharCode(65 + rangeIdx); // last-resort fallback only if the range fetch also came back empty
       teamNames.push(label);
     }
 
     // Diagnostic: dump every header-row cell (raw v/f) so any misalignment
     // is visible at a glance in the browser console.
-    const colLetter = (i) => { let s=''; i++; while(i>0){ s=String.fromCharCode(65+((i-1)%26))+s; i=Math.floor((i-1)/26);} return s; };
     console.log('[audit-dashboard] full header row (row 2):', headerRow.map((c,i)=>`${colLetter(i)}: v=${JSON.stringify(c?.v)} f=${JSON.stringify(c?.f)}`));
+    console.log('[audit-dashboard] team header range fetch ->', teamHeaderRange);
     console.log('[audit-dashboard] detected columns ->', {
       typeCol: colLetter(typeColIdx), valueCol: colLetter(valueColIdx), notMatchCol: colLetter(notMatchColIdx),
       teamCount: teamNames.length, teamNames
@@ -490,6 +548,27 @@ function renderKPIs(){
   document.getElementById('kpiRow').innerHTML = kpis.map(k =>
     `<div class="kpi ${k.cls}"><div class="lbl">${k.lbl}</div><div class="val">${k.val}</div></div>`
   ).join('');
+}
+
+function downloadTeamSummary(){
+  const totalQty = teamTotals.reduce((a,b)=>a+b,0);
+  const order = teamNames.map((_,i)=>i).sort((a,b)=> teamTotals[b]-teamTotals[a]);
+  const rows = order.map(i => [teamNames[i], teamTotals[i], teamEanCounts[i], totalQty ? (teamTotals[i]/totalQty*100).toFixed(1)+'%' : '0.0%']);
+  rows.push(['TOTAL', totalQty, rawRows.length, '100.0%']);
+  downloadCsv('team-wise-summary.csv', ['Team','Qty Counted','EANs Touched','Share %'], rows);
+}
+function downloadTeamPhysicalCount(){
+  const order = teamNames.map((_,i)=>i).sort((a,b)=> teamTotals[b]-teamTotals[a]);
+  const rows = order.map(i => [teamNames[i], teamTotals[i]]);
+  downloadCsv('team-wise-physical-count.csv', ['Team','Qty Counted'], rows);
+}
+function downloadBinSummary(){
+  const rows = binSummary.map(b => [b.location, b.sys, b.phy, b.diff]);
+  downloadCsv('bin-wise-summary.csv', ['Location','SYS','Physical','Diff'], rows);
+}
+function downloadEanDetail(){
+  const rows = filteredRows.map(r => [r.ean, r.sys, r.phy, r.variance, r.type, r.pending]);
+  downloadCsv('ean-wise-detail.csv', ['EAN','SYS','Phy Count','Variance','Status','Pending Scan Qty'], rows);
 }
 
 function renderBinSummary(){

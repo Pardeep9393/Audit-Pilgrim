@@ -212,6 +212,24 @@
   </div>
 
   <div class="panel">
+    <h2>BIN-wise Summary</h2>
+    <div class="desc">SYS vs Physical vs Diff, by bin/location</div>
+    <div class="table-wrap">
+      <table id="binSummaryTable">
+        <thead>
+          <tr>
+            <th>Location</th>
+            <th class="num">SYS</th>
+            <th class="num">Physical</th>
+            <th class="num">Diff</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
     <h2>EAN-wise Detail — Short / Excess / Match / Pending</h2>
     <div class="desc">Phy Count − SYS per EAN, with pending scan qty (SYS not yet matched by physical count)</div>
     <div class="table-controls">
@@ -252,14 +270,15 @@
 
 <script>
 const SHEET_ID = "1-spNRkteQBIKliDlpq0qkIdLxbFzxsTL1MPq4U1dEk8";
-const SHEET_NAME = "RAW Final Summary";
-const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`;
+const SHEET_GID = "980524523"; // "EAN RAW Final Summary" tab
+const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${SHEET_GID}`;
 
 let rawRows = [];
 let teamNames = [];
 let teamTotals = [];
 let teamEanCounts = [];
 let notMatchTotal = 0;
+let binSummary = [];
 let filteredRows = [];
 let sortState = {col:'variance', dir:'asc'};
 let currentPage = 1;
@@ -362,6 +381,32 @@ async function loadData(){
     teamTotals = teamNames.map((_, i) => cellNum(totalsRow[teamStartIdx + i]));
     notMatchTotal = cellNum(totalsRow[notMatchColIdx]);
 
+    // --- BIN RAW Final Summary (Location / SYS / Physical / Diff block, e.g. columns T-W) ---
+    // Located by scanning for a cell whose text is exactly "Location" rather
+    // than assuming a fixed column, since this block sits off to the side of
+    // the main EAN table and its exact position can shift.
+    binSummary = [];
+    let binHeaderRow = -1, binHeaderCol = -1;
+    for(let r = 0; r < rows.length && binHeaderRow === -1; r++){
+      const c = rows[r].c;
+      if(!c) continue;
+      for(let ci = 0; ci < c.length; ci++){
+        if(cellText(c[ci]).trim().toLowerCase() === 'location'){
+          binHeaderRow = r; binHeaderCol = ci; break;
+        }
+      }
+    }
+    if(binHeaderRow !== -1){
+      const locCol = binHeaderCol, sysCol = binHeaderCol + 1, phyCol = binHeaderCol + 2, diffCol = binHeaderCol + 3;
+      for(let r = binHeaderRow + 1; r < rows.length; r++){
+        const c = rows[r].c;
+        const loc = (c && c[locCol]) ? cellText(c[locCol]) : '';
+        if(!loc) break;
+        binSummary.push({ location: loc, sys: cellNum(c[sysCol]), phy: cellNum(c[phyCol]), diff: cellNum(c[diffCol]) });
+      }
+    }
+    console.log('[audit-dashboard] BIN summary ->', { binHeaderRow, binHeaderCol, count: binSummary.length, binSummary });
+
     rawRows = [];
     for(let r = 2; r < rows.length; r++){
       const c = rows[r].c;
@@ -391,6 +436,7 @@ async function loadData(){
     renderStatusChart();
     renderTopVarianceChart();
     renderNotMatchPanel();
+    renderBinSummary();
     applyFilters();
 
     statusEl.textContent = `Loaded ${rawRows.length} EAN rows across ${teamNames.length} teams.`;
@@ -435,6 +481,16 @@ function renderKPIs(){
   ).join('');
 }
 
+function renderBinSummary(){
+  const tbody = document.querySelector('#binSummaryTable tbody');
+  tbody.innerHTML = binSummary.map(b => `
+    <tr>
+      <td>${b.location}</td>
+      <td class="num">${fmt(b.sys)}</td>
+      <td class="num">${fmt(b.phy)}</td>
+      <td class="num" style="${b.diff < 0 ? 'color:var(--short);' : ''}">${fmt(b.diff)}</td>
+    </tr>`).join('');
+}
 function renderTeamSimpleGrid(){
   const el = document.getElementById('teamSimpleGrid');
   const minQty = teamTotals.length ? Math.min(...teamTotals) : 0;

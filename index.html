@@ -335,8 +335,9 @@ async function loadData(){
     teamNames = [];
     let teamStartIdx = 3; // column D
     for(let idx = teamStartIdx; idx < typeColIdx; idx++){
-      const label = cellText(headerRow[idx]);
-      if(label) teamNames.push(label);
+      let label = cellText(headerRow[idx]);
+      if(!label) label = 'Team-' + String.fromCharCode(65 + (idx - teamStartIdx)); // gviz sometimes returns no text at all (v and f both empty) for these numeric-dominant columns
+      teamNames.push(label);
     }
 
     // Diagnostic: dump every header-row cell (raw v/f) so any misalignment

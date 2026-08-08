@@ -189,16 +189,9 @@
 
   <div class="panel">
     <h2>Not Match EAN Summary</h2>
-    <div class="desc">Sum of the "Not match EAN" column, plus every EAN carrying a value</div>
-    <div class="kpis" style="margin-bottom:16px;">
+    <div class="desc">Sum taken directly from cell Q1 of the "Not match EAN" column</div>
+    <div class="kpis" style="margin-bottom:0;">
       <div class="kpi short"><div class="lbl">Not Match EAN — Total Sum</div><div class="val" id="notMatchSum">0</div></div>
-      <div class="kpi"><div class="lbl">Not Match EAN — Row Count</div><div class="val" id="notMatchCount">0</div></div>
-    </div>
-    <div class="table-scroll" style="max-height:280px;">
-      <table id="notMatchTable">
-        <thead><tr><th>EAN</th><th class="num">Not Match Qty</th></tr></thead>
-        <tbody id="notMatchTableBody"></tbody>
-      </table>
     </div>
   </div>
 
@@ -250,6 +243,7 @@ let rawRows = [];
 let teamNames = [];
 let teamTotals = [];
 let teamEanCounts = [];
+let notMatchTotal = 0;
 let filteredRows = [];
 let sortState = {col:'variance', dir:'asc'};
 let currentPage = 1;
@@ -295,6 +289,12 @@ async function loadData(){
     const valueColIdx = teamEndIdx + 1;  // value column
     const notMatchColIdx = teamEndIdx + 2; // Not match EAN column
 
+    // Row 1 (rows[0]) already holds the sheet's own totals — pull team sums and
+    // the Not Match EAN sum straight from there instead of recomputing.
+    const totalsRow = rows[0].c;
+    teamTotals = teamNames.map((_, i) => Number(totalsRow[teamStartIdx + i] && totalsRow[teamStartIdx + i].v) || 0);
+    notMatchTotal = Number(totalsRow[notMatchColIdx] && totalsRow[notMatchColIdx].v) || 0;
+
     rawRows = [];
     for(let r = 2; r < rows.length; r++){
       const c = rows[r].c;
@@ -309,8 +309,7 @@ async function loadData(){
       const variance = phy - sys;
       const type = variance < 0 ? 'Short' : (variance > 0 ? 'Excess' : 'Match');
       const pending = variance < 0 ? -variance : 0;
-      const notMatch = Number(c[notMatchColIdx] && c[notMatchColIdx].v) || 0;
-      rawRows.push({ean, sys, phy, teamVals, variance, type, pending, notMatch});
+      rawRows.push({ean, sys, phy, teamVals, variance, type, pending});
     }
 
     if(rawRows.length === 0){
@@ -340,7 +339,6 @@ async function loadData(){
 }
 
 function computeAggregates(){
-  teamTotals = teamNames.map((_, i) => rawRows.reduce((s, r) => s + r.teamVals[i], 0));
   teamEanCounts = teamNames.map((_, i) => rawRows.reduce((s, r) => s + (r.teamVals[i] > 0 ? 1 : 0), 0));
 }
 
@@ -420,13 +418,7 @@ function renderTeamPhySumTable(){
 }
 
 function renderNotMatchPanel(){
-  const withValue = rawRows.filter(r => r.notMatch !== 0);
-  const totalNotMatch = rawRows.reduce((s,r)=>s+r.notMatch,0);
-  document.getElementById('notMatchSum').textContent = fmt(totalNotMatch);
-  document.getElementById('notMatchCount').textContent = fmt(withValue.length);
-  document.getElementById('notMatchTableBody').innerHTML = withValue.length
-    ? withValue.map(r => `<tr><td>${r.ean}</td><td class="num">${fmt(r.notMatch)}</td></tr>`).join('')
-    : `<tr><td colspan="2" style="color:var(--muted);text-align:center;">No "Not match EAN" values found in the sheet</td></tr>`;
+  document.getElementById('notMatchSum').textContent = fmt(notMatchTotal);
 }
 
 function renderStatusChart(){

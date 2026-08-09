@@ -197,10 +197,49 @@
   </div>
 
   <div class="panel">
-    <h2>Not Match EAN Summary</h2>
+    <div class="panel-head"><h2>Not Match EAN Summary</h2><button class="dl-btn" onclick="downloadNotMatchSummary()">⬇ CSV</button></div>
     <div class="desc">Sum taken directly from cell Q1 of the "Not match EAN" column</div>
     <div class="kpis" style="margin-bottom:0;">
       <div class="kpi short"><div class="lbl">Not Match EAN — Total Sum</div><div class="val" id="notMatchSum">0</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Combined Team Scan Log</h2><button class="dl-btn" onclick="downloadCombinedLog()">⬇ CSV</button></div>
+    <div class="desc">All 12 team tabs merged into one raw scan log</div>
+    <div class="table-controls">
+      <input type="text" id="combinedSearchBox" placeholder="Search EAN / Shelf…" oninput="applyCombinedFilters()">
+      <select id="combinedTeamFilter" onchange="applyCombinedFilters()">
+        <option value="All">All teams</option>
+      </select>
+      <span id="combinedRowCount" style="color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:12px;"></span>
+    </div>
+    <div class="table-scroll">
+      <table id="combinedTable">
+        <thead>
+          <tr>
+            <th class="sortable" onclick="sortCombinedBy('team')">Team <span class="arrow">↕</span></th>
+            <th class="sortable" onclick="sortCombinedBy('date')">Date <span class="arrow">↕</span></th>
+            <th class="sortable" onclick="sortCombinedBy('shelf')">Shelf <span class="arrow">↕</span></th>
+            <th class="sortable" onclick="sortCombinedBy('ean')">EAN <span class="arrow">↕</span></th>
+            <th class="sortable num" onclick="sortCombinedBy('mrp')">MRP <span class="arrow">↕</span></th>
+            <th class="sortable num" onclick="sortCombinedBy('caseSize')">Case Size <span class="arrow">↕</span></th>
+            <th class="sortable num" onclick="sortCombinedBy('boxCount')">Box Count <span class="arrow">↕</span></th>
+            <th class="sortable num" onclick="sortCombinedBy('looseQty')">Loose QTY <span class="arrow">↕</span></th>
+            <th class="sortable num" onclick="sortCombinedBy('boxQty')">Box QTY <span class="arrow">↕</span></th>
+            <th class="sortable num" onclick="sortCombinedBy('totalQty')">Total QTY <span class="arrow">↕</span></th>
+            <th class="sortable" onclick="sortCombinedBy('locationMismatch')">Location Mis Match <span class="arrow">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="combinedTableBody"></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <span id="combinedPageInfo"></span>
+      <div>
+        <button onclick="changeCombinedPage(-1)" id="combinedPrevBtn">‹ Prev</button>
+        <button onclick="changeCombinedPage(1)" id="combinedNextBtn">Next ›</button>
+      </div>
     </div>
   </div>
 
@@ -268,6 +307,26 @@ const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx
 const BIN_SHEET_GID = "975988618"; // "BIN RAW Final Summary" tab
 const BIN_GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${BIN_SHEET_GID}`;
 
+// The 12 individual team scan-log tabs. Each has columns:
+// A=date, B=Shelf, C=EAN, D=MRP, E=Case Size, F=Box Count, G=Loose QTY,
+// H=Box QTY, I=Total QTY, J=LEN, K=EAN match, L=Location Mis Match.
+// Names below are taken from the sheet's tab bar in gid order — if a tab
+// gets renamed or reordered in the sheet, update the "name" here to match.
+const TEAM_TABS = [
+  { gid: "624968207",  name: "Vikash&Deepanshu" },
+  { gid: "610601790",  name: "Sahil & Vikash_11174" },
+  { gid: "752963585",  name: "Vinay&Chanderdeep_4841" },
+  { gid: "880078416",  name: "Robin&Deepak_42" },
+  { gid: "622872161",  name: "Nitish&Ajay_259" },
+  { gid: "2090708294", name: "Akas Saroj&Shubham_308" },
+  { gid: "1453057269", name: "Sunil&Rizwan_13225" },
+  { gid: "636552338",  name: "Chandan&Krishna_165" },
+  { gid: "2056240107", name: "Sachin&Sajeed_8210" },
+  { gid: "1952463787", name: "Ranjeet&Ashutosh_164" },
+  { gid: "1876726479", name: "Santosh&pankaj_51" },
+  { gid: "1373142606", name: "Atul&Surender_11193" }
+];
+
 function colLetter(i){ let s=''; i++; while(i>0){ s=String.fromCharCode(65+((i-1)%26))+s; i=Math.floor((i-1)/26);} return s; }
 
 // Fetches a single-row range (e.g. "D2:O2") on its own. Scoping the query to
@@ -298,6 +357,11 @@ let sortState = {col:'variance', dir:'asc'};
 let currentPage = 1;
 const PAGE_SIZE = 50;
 
+let combinedRows = [];
+let filteredCombinedRows = [];
+let combinedSortState = {col:'date', dir:'desc'};
+let combinedPage = 1;
+
 let statusChart, topVarianceChart;
 let countdownTimer, countdownVal = 300;
 
@@ -326,6 +390,7 @@ async function loadData(){
   statusEl.textContent = 'Fetching latest data from Google Sheet…';
 
   try{
+    const combinedPromise = loadCombinedTeamTabs().catch(e => console.warn('[audit-dashboard] combined team tabs failed:', e));
     const [res, binRes] = await Promise.all([fetch(GVIZ_URL), fetch(BIN_GVIZ_URL)]);
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
@@ -490,6 +555,7 @@ async function loadData(){
     renderNotMatchPanel();
     renderBinSummary();
     applyFilters();
+    await combinedPromise;
 
     statusEl.textContent = `Loaded ${rawRows.length} EAN rows across ${teamNames.length} teams.`;
     document.getElementById('lastUpdated').textContent = new Date().toLocaleString('en-IN');
@@ -501,6 +567,153 @@ async function loadData(){
   }finally{
     btn.disabled = false;
   }
+}
+
+// Fetches one team tab and parses it into scan-log rows. Locates the header
+// row by scanning for a cell whose text is exactly "date" (col A), then
+// reads every following row that has a non-empty EAN (col C) as data —
+// robust to a blank spacer row or shifted header row.
+async function fetchTeamTab(tab){
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${tab.gid}`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+  const text = await res.text();
+  const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+  const data = JSON.parse(jsonStr);
+  const tabRows = data.table.rows || [];
+
+  const cellText = (cell) => {
+    if(!cell) return '';
+    if(cell.v !== null && cell.v !== undefined && cell.v !== '') return String(cell.f ?? cell.v);
+    if(cell.f !== null && cell.f !== undefined && cell.f !== '') return String(cell.f);
+    return '';
+  };
+  const cellNum = (cell) => {
+    if(!cell) return 0;
+    if(cell.v !== null && cell.v !== undefined && cell.v !== '') return Number(cell.v) || 0;
+    if(cell.f !== null && cell.f !== undefined && cell.f !== '') return Number(cell.f) || 0;
+    return 0;
+  };
+
+  let headerRowIdx = 0;
+  for(let r = 0; r < tabRows.length; r++){
+    const c = tabRows[r].c;
+    if(c && cellText(c[0]).trim().toLowerCase() === 'date'){ headerRowIdx = r; break; }
+  }
+
+  const out = [];
+  for(let r = headerRowIdx + 1; r < tabRows.length; r++){
+    const c = tabRows[r].c;
+    const ean = c ? cellText(c[2]) : '';
+    if(!ean) continue;
+    out.push({
+      team: tab.name,
+      date: c[0] ? cellText(c[0]) : '',
+      shelf: c[1] ? cellText(c[1]) : '',
+      ean: ean,
+      mrp: cellNum(c[3]),
+      caseSize: cellNum(c[4]),
+      boxCount: cellNum(c[5]),
+      looseQty: cellNum(c[6]),
+      boxQty: cellNum(c[7]),
+      totalQty: cellNum(c[8]),
+      len: c[9] ? cellText(c[9]) : '',
+      eanMatch: c[10] ? cellText(c[10]) : '',
+      locationMismatch: c[11] ? cellText(c[11]) : ''
+    });
+  }
+  return out;
+}
+
+async function loadCombinedTeamTabs(){
+  const results = await Promise.allSettled(TEAM_TABS.map(fetchTeamTab));
+  combinedRows = [];
+  results.forEach((r, i) => {
+    if(r.status === 'fulfilled') combinedRows.push(...r.value);
+    else console.warn('[audit-dashboard] team tab fetch failed:', TEAM_TABS[i].name, r.reason);
+  });
+
+  const teamFilterEl = document.getElementById('combinedTeamFilter');
+  const prevVal = teamFilterEl.value;
+  teamFilterEl.innerHTML = '<option value="All">All teams</option>' +
+    TEAM_TABS.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+  teamFilterEl.value = [...teamFilterEl.options].some(o => o.value === prevVal) ? prevVal : 'All';
+
+  applyCombinedFilters();
+}
+
+function downloadCombinedLog(){
+  const rows = filteredCombinedRows.map(r => [
+    r.team, r.date, r.shelf, r.ean, r.mrp, r.caseSize, r.boxCount,
+    r.looseQty, r.boxQty, r.totalQty, r.len, r.eanMatch, r.locationMismatch
+  ]);
+  downloadCsv('combined-team-scan-log.csv',
+    ['Team','Date','Shelf','EAN','MRP','Case Size','Box Count','Loose QTY','Box QTY','Total QTY','LEN','EAN match','Location Mis Match'],
+    rows);
+}
+
+function downloadNotMatchSummary(){
+  downloadCsv('not-match-ean-summary.csv', ['Metric','Value'], [['Not Match EAN — Total Sum', notMatchTotal]]);
+}
+
+function applyCombinedFilters(){
+  const q = document.getElementById('combinedSearchBox').value.trim().toLowerCase();
+  const team = document.getElementById('combinedTeamFilter').value;
+  filteredCombinedRows = combinedRows.filter(r =>
+    (team === 'All' || r.team === team) &&
+    (!q || r.ean.toLowerCase().includes(q) || r.shelf.toLowerCase().includes(q))
+  );
+  sortCombinedRows();
+  combinedPage = 1;
+  renderCombinedTable();
+}
+
+function sortCombinedBy(col){
+  if(combinedSortState.col === col){ combinedSortState.dir = combinedSortState.dir==='asc' ? 'desc' : 'asc'; }
+  else{ combinedSortState.col = col; combinedSortState.dir = 'asc'; }
+  sortCombinedRows();
+  renderCombinedTable();
+}
+
+function sortCombinedRows(){
+  const {col, dir} = combinedSortState;
+  const mul = dir==='asc' ? 1 : -1;
+  filteredCombinedRows.sort((a,b) => {
+    let va = a[col], vb = b[col];
+    if(typeof va === 'string') return va.localeCompare(vb) * mul;
+    return (va - vb) * mul;
+  });
+}
+
+function renderCombinedTable(){
+  const start = (combinedPage-1) * PAGE_SIZE;
+  const pageRows = filteredCombinedRows.slice(start, start + PAGE_SIZE);
+  document.getElementById('combinedTableBody').innerHTML = pageRows.map(r => `
+    <tr>
+      <td>${r.team}</td>
+      <td>${r.date}</td>
+      <td>${r.shelf}</td>
+      <td>${r.ean}</td>
+      <td class="num">${fmt(r.mrp)}</td>
+      <td class="num">${fmt(r.caseSize)}</td>
+      <td class="num">${fmt(r.boxCount)}</td>
+      <td class="num">${fmt(r.looseQty)}</td>
+      <td class="num">${fmt(r.boxQty)}</td>
+      <td class="num">${fmt(r.totalQty)}</td>
+      <td>${r.locationMismatch}</td>
+    </tr>`).join('');
+
+  document.getElementById('combinedRowCount').textContent = `${filteredCombinedRows.length} of ${combinedRows.length} rows`;
+  const totalPages = Math.max(1, Math.ceil(filteredCombinedRows.length / PAGE_SIZE));
+  document.getElementById('combinedPageInfo').textContent = `Page ${combinedPage} of ${totalPages}`;
+  document.getElementById('combinedPrevBtn').disabled = combinedPage <= 1;
+  document.getElementById('combinedNextBtn').disabled = combinedPage >= totalPages;
+}
+
+function changeCombinedPage(delta){
+  const totalPages = Math.max(1, Math.ceil(filteredCombinedRows.length / PAGE_SIZE));
+  combinedPage = Math.min(totalPages, Math.max(1, combinedPage + delta));
+  renderCombinedTable();
 }
 
 function computeAggregates(){

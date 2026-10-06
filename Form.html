@@ -30,7 +30,8 @@
   .fields{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
   .fields input{font-size:16px;padding:8px}
   .fields label{font-size:10px}
-  .tot{margin-top:6px;font-size:13px;color:var(--mu)}
+  .tot{margin-top:8px;font-size:13px;color:var(--mu);display:flex;align-items:center;gap:12px}
+  .more{padding:7px 12px;font-size:13px}
   .x{background:none;color:var(--er);padding:0 6px;font-size:18px}
   .msg{padding:10px 12px;border-radius:8px;font-size:14px;margin-bottom:10px}
   .msg.er{background:#fde8eb;color:var(--er)}
@@ -47,7 +48,7 @@
 
 <script>
 // ====== CONFIG: Apps Script Web App URL yahan paste karo ======
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzB3EsA2M-fkXhjYbgNPeh2X_XqD8W3ZA31yNWAqPf3UbRCv71B3WhRReMBkKD82Qw7/exec';
+const SCRIPT_URL = https://script.google.com/macros/s/AKfycbzB3EsA2M-fkXhjYbgNPeh2X_XqD8W3ZA31yNWAqPf3UbRCv71B3WhRReMBkKD82Qw7/exec;
 // ===============================================================
 
 const KEY = 'auditBinState_v1';
@@ -117,7 +118,7 @@ function itemHtml(i, idx){
       <div><label>Box Count</label><input type="number" inputmode="numeric" value="${i.box}" oninput="upd(${idx},'box',this.value)"></div>
       <div><label>Loose QTY</label><input type="number" inputmode="numeric" value="${i.loose}" oninput="upd(${idx},'loose',this.value)"></div>
     </div>
-    <div class="tot">Total: <b id="tt${idx}">${total(i)}</b></div></div>`;
+    <div class="tot"><button class="sec more" onclick="scanMore()">➕ Scan more EAN</button><span>Total: <b id="tt${idx}">${total(i)}</b></span></div></div>`;
 }
 
 function focus(id){ setTimeout(()=>{ const el = document.getElementById(id); if (el) el.focus(); }, 30); }
@@ -150,6 +151,10 @@ function scanEan(code){
 function upd(idx, f, v){
   S.items[idx][f] = v; persist();
   const t = document.getElementById('tt' + idx); if (t) t.textContent = total(S.items[idx]);
+}
+function scanMore(){
+  const el = document.getElementById('ean');
+  if (el) { el.value = ''; el.scrollIntoView({block:'center'}); el.focus(); }
 }
 function delItem(idx){ if (!confirm('Ye EAN hatana hai?')) return; S.items.splice(idx,1); persist(); render(); }
 

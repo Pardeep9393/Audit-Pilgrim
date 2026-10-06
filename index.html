@@ -59,6 +59,11 @@
   }
   .refresh-box button:hover{opacity:.85;}
   .refresh-box button:disabled{opacity:.5;cursor:wait;}
+  .scan-row{display:flex;gap:6px;justify-content:flex-end;margin-bottom:8px;}
+  .scan-row a,.scan-row button{margin:0;text-decoration:none;}
+  .scan-row a{background:#2ecc8f;color:#04141c;border-radius:6px;padding:9px 16px;font-family:'Inter',sans-serif;font-weight:600;font-size:13px;}
+  .scan-row a:hover{opacity:.85;}
+  .scan-row button.copy{background:transparent;color:var(--accent);border:1px solid var(--accent);padding:9px 12px;}
 
   #status{
     font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--muted);
@@ -162,6 +167,10 @@
       <div class="sub" id="sheetTitle">Audit Pilgrim — FRK Aug-BLS</div>
     </div>
     <div class="refresh-box">
+      <div class="scan-row">
+        <a id="scanLink" href="audit-bin/index.html" target="_blank" rel="noopener">📷 Open Scanner</a>
+        <button class="copy" onclick="copyScanLink(this)">Copy link</button>
+      </div>
       <button id="refreshBtn" onclick="loadData()">↻ Refresh now</button>
       <div>Last updated: <span id="lastUpdated">—</span></div>
       <div>Auto-refresh in <span id="countdown">300</span>s</div>
@@ -912,6 +921,13 @@ function resetCountdown(){
 }
 
 loadData();
+</script>
+<script>
+function copyScanLink(b){
+  const u=new URL(document.getElementById('scanLink').getAttribute('href'),location.href).href;
+  (navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(()=>{b.textContent='Copied ✓';},()=>{prompt('Scanner link:',u);});
+  setTimeout(()=>{b.textContent='Copy link';},1500);
+}
 </script>
 </body>
 </html>
